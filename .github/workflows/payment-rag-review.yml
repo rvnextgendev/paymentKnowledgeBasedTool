@@ -45,6 +45,7 @@ jobs:
         working-directory: rag-service
         env:
           DATABASE_URL: postgresql+psycopg://rag:rag@localhost:5432/payment_rag
+          GROQ_MODEL: "qwen/qwen3.8-27b"
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
