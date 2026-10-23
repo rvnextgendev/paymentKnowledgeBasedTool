@@ -178,6 +178,88 @@ POST `/review` accepts:
 {"diff":"- if (request.Amount <= 0)\n+ if (request.Amount < 0)"}
 ```
 
+## Start, stop, and restart the whole tool
+
+The `paymentknowledgebasedtool` group in Docker Desktop is the Compose project. In the current `docker-compose.yml`, it contains only PostgreSQL (`db`). Ollama is a separate container; FastAPI and Streamlit run in your terminals. Starting the Docker group does not start those other components.
+
+### Start an existing installation
+
+Start Docker Desktop. Open PowerShell in the repository root:
+
+```powershell
+cd C:\Users\RajeshDas\paymentKnowledgeBasedTool
+docker compose up -d
+docker compose exec db pg_isready -U rag -d payment_rag
+docker start ollama
+docker exec ollama ollama list
+```
+
+Replace the folder path with your actual checkout location. `docker start ollama` assumes the container already exists; see the first-time Docker setup above if it does not. If using native Ollama, start that application instead.
+
+In the same terminal, start FastAPI:
+
+```powershell
+cd rag-service
+.\.venv\Scripts\Activate.ps1
+uvicorn app:app --reload --port 8000
+```
+
+Leave that terminal running. In a **second PowerShell terminal**, start the UI:
+
+```powershell
+cd C:\Users\RajeshDas\paymentKnowledgeBasedTool\rag-service
+.\.venv\Scripts\Activate.ps1
+streamlit run streamlit_app.py
+```
+
+Open http://localhost:8501. For direct API testing, use http://localhost:8000/docs. You do not need to run ingestion on every restart: run `python ingest.py` from `rag-service` only for the initial index, changed source documents, or a missing index, while live queries are stopped.
+
+### Stop the whole tool
+
+1. Press **Ctrl+C** in the Streamlit terminal.
+2. Press **Ctrl+C** in the FastAPI terminal. If using VS Code debugging, use its Stop button instead.
+3. From the repository root, stop the database and the separate Ollama container:
+
+   ```powershell
+   cd C:\Users\RajeshDas\paymentKnowledgeBasedTool
+   docker compose stop
+   docker stop ollama
+   ```
+
+`docker compose stop` stops the `paymentknowledgebasedtool` group without removing its containers. `docker stop ollama` preserves that container and its named model volume. These commands stop containers belonging to this demo; they do not stop Docker Desktop itself.
+
+Use `stop` for normal shutdown. The current database has no named persistent volume, so do not use `docker compose down`, container removal, or `down -v` as the normal stop command: container replacement can lose the index. Rebuild it from source with ingestion if needed.
+
+### Restart services
+
+To restart only the Docker services that already exist:
+
+```powershell
+cd C:\Users\RajeshDas\paymentKnowledgeBasedTool
+docker compose restart db
+docker restart ollama
+```
+
+Wait for PostgreSQL and Ollama readiness before submitting a request. These commands do not restart FastAPI or Streamlit. Stop their terminal processes with Ctrl+C and run their startup commands again. Fully restart FastAPI after changing provider/model settings in `.env`.
+
+After stopping containers, `docker compose start` and `docker start ollama` start the existing containers again; `docker compose up -d` also creates the database container if it is missing.
+
+### Check running components
+
+From the repository root:
+
+```powershell
+docker compose ps
+docker ps --filter "name=^/ollama$"
+docker compose logs --tail 50 db
+docker logs --tail 50 ollama
+Invoke-RestMethod -Uri 'http://localhost:11434/api/tags'
+Invoke-WebRequest -Uri 'http://localhost:8000/openapi.json'
+Invoke-WebRequest -Uri 'http://localhost:8501/_stcore/health'
+```
+
+These checks establish service reachability. Also submit a real question or diff to verify database retrieval and model generation together. If an endpoint fails, inspect that service's terminal or logs.
+
 ## What ingest.py does
 
 It reads `.cs`, `.md`, `.json`, `.yaml`, and `.yml` files under `sample-payment-api/` and `knowledge/`. It skips blank files, files larger than 2 MB, and dependency/build directories. It splits text into chunks of up to 1,200 characters with 200 characters of overlap.
