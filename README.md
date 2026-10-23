@@ -72,12 +72,44 @@ The earlier local model list showed `llama3.2:latest`; use that tag if it is sti
 
 ### Start Ollama with Docker (first-time setup)
 
-If a container named `ollama` already exists, use `docker start ollama` rather than creating it again. For a new installation:
+Start Docker Desktop first. Check whether the container already exists:
 
 ```powershell
-docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+docker ps -a --filter "name=^/ollama$"
+```
+
+For a **new container**, run this once. The port is bound to your computer's loopback address for local use:
+
+```powershell
+docker run -d --name ollama -p 127.0.0.1:11434:11434 -v ollama:/root/.ollama ollama/ollama
 docker exec ollama ollama pull llama3.2:3b
 docker exec ollama ollama list
+```
+
+For an **existing container** named `ollama`, start it instead of repeating `docker run`:
+
+```powershell
+docker start ollama
+docker exec ollama ollama list
+```
+
+Set `OLLAMA_MODEL` in `rag-service/.env` to the exact installed tag (`llama3.2:3b` for the download above, or `llama3.2:latest` if that is already installed), set `LLM_PROVIDER=ollama`, and use `OLLAMA_BASE_URL=http://localhost:11434`. Restart FastAPI after editing `.env`.
+
+Check the container and server:
+
+```powershell
+docker ps --filter "name=^/ollama$"
+docker logs --tail 50 ollama
+Invoke-RestMethod -Uri 'http://localhost:11434/api/tags'
+```
+
+If the API is still starting, wait for the server to listen and retry the request. If port 11434 is already in use by native Ollama or another container, use that existing server or stop it before creating this container.
+
+Stop and restart Ollama without deleting downloaded models:
+
+```powershell
+docker stop ollama
+docker start ollama
 ```
 
 The named volume retains downloaded models across container replacement. This basic command uses CPU; GPU setup depends on your hardware and Docker configuration. For a native Windows/macOS/Linux installation, install Ollama from https://ollama.com/download, then run `ollama pull llama3.2:3b`. If no server is running, start `ollama serve`; avoid launching another server if the desktop app already serves port 11434.
