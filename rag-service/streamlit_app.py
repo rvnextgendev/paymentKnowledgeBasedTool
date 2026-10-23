@@ -16,7 +16,10 @@ with st.sidebar:
     st.info("Change LLM_PROVIDER in .env and restart FastAPI to switch models.")
     try:
         response = requests.get(f"{API}/openapi.json", timeout=3)
-        st.success("API reachable") if response.ok else st.warning("API unavailable")
+        if response.ok:
+            st.success("API reachable")
+        else:
+            st.warning("API unavailable")
     except requests.RequestException:
         st.warning("Start FastAPI first")
 
