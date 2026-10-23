@@ -58,6 +58,56 @@ GROQ_MODEL=exact_model_id_available_to_your_account
 
 Select an available chat model in the Groq console. The code's default model may not be available to your account. Restart FastAPI after changing provider settings.
 
+### Ollama: what this project uses
+
+Ollama runs a language model locally and exposes an HTTP API. This project uses LangChain's `ChatOllama` integration in `rag-service/llm_provider.py` to generate chat answers and code reviews from retrieved evidence. It does not use Ollama for embeddings: `common.py` uses Hugging Face `all-MiniLM-L6-v2` for those, and PostgreSQL/pgvector stores them.
+
+| Setting | Repository default | Purpose |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `groq` | Set to `ollama` to use your local Ollama server. |
+| `OLLAMA_MODEL` | `llama3.2:3b` | Exact model tag requested from Ollama. |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama address as seen by the FastAPI process. |
+
+The earlier local model list showed `llama3.2:latest`; use that tag if it is still your installed model. A model in a screenshot is evidence of that local installation, not a change to the repository default. Inspect `ollama list` whenever switching machines. The UI shows the provider, not the effective model tag.
+
+### Start Ollama with Docker (first-time setup)
+
+If a container named `ollama` already exists, use `docker start ollama` rather than creating it again. For a new installation:
+
+```powershell
+docker run -d --name ollama -p 11434:11434 -v ollama:/root/.ollama ollama/ollama
+docker exec ollama ollama pull llama3.2:3b
+docker exec ollama ollama list
+```
+
+The named volume retains downloaded models across container replacement. This basic command uses CPU; GPU setup depends on your hardware and Docker configuration. For a native Windows/macOS/Linux installation, install Ollama from https://ollama.com/download, then run `ollama pull llama3.2:3b`. If no server is running, start `ollama serve`; avoid launching another server if the desktop app already serves port 11434.
+
+### Verify Ollama before using the UI
+
+In PowerShell, list models through the same address that the host-based FastAPI app will use:
+
+```powershell
+Invoke-RestMethod -Uri 'http://localhost:11434/api/tags'
+```
+
+Test generation directly (replace the model tag if yours differs):
+
+```powershell
+$ollamaBody = @{
+    model = 'llama3.2:3b'
+    prompt = 'Explain why a payment amount must be greater than zero in one sentence.'
+    stream = $false
+} | ConvertTo-Json
+$ollamaResult = Invoke-RestMethod -Method Post -Uri 'http://localhost:11434/api/generate' -ContentType 'application/json' -Body $ollamaBody
+$ollamaResult.response
+```
+
+A generated response verifies Ollama itself. Next set `LLM_PROVIDER=ollama` and the matching `OLLAMA_MODEL` in `.env`, restart FastAPI, index documents, and test Ask AI or Analyze change. The model must already be downloaded; the Python application does not pull it automatically.
+
+`localhost` works here because FastAPI runs directly on your computer and the Ollama container publishes port 11434. If you later containerize FastAPI, its `localhost` means that container: use the appropriate Docker service address, or `http://host.docker.internal:11434` for a host service on Docker Desktop. The current Compose file starts only PostgreSQL; it does not start Ollama or FastAPI.
+
+To switch models, pull the desired model, copy its exact tag into `OLLAMA_MODEL`, and restart FastAPI. To switch back to Groq, set `LLM_PROVIDER=groq` and configure a valid Groq key/model. No Groq requests are made by the Ollama provider path. Keep port 11434 local; this demo assumes a trusted local Ollama endpoint.
+
 ### Index and start the application
 
 From `rag-service`, with the virtual environment activated:
