@@ -1,5 +1,7 @@
 # Payment RAG AI
 
+See the [API reference](docs/API.md) for endpoint schemas, PowerShell examples, response formats, and Swagger UI instructions.
+
 Ask questions about payment code and business rules, review a pasted diff, or get an advisory review on a GitHub pull request.
 
 ## How it works
