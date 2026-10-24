@@ -4,7 +4,26 @@ Ask questions about payment code and business rules, review a pasted diff, or ge
 
 ## How it works
 
-Streamlit sends a request to FastAPI. LangGraph retrieves the five most relevant text chunks from PostgreSQL/pgvector, then sends the evidence and question or diff to Groq or Ollama. The UI is optional: you can use FastAPI's `/docs` directly. GitHub Actions reviews PRs independently of the UI.
+Streamlit sends a request to FastAPI. LangGraph combines semantic pgvector search with PostgreSQL keyword search, prioritizes literal code identifiers and quoted phrases, and sends the five selected chunks and question or diff to Groq or Ollama. The UI is optional: you can use FastAPI's `/docs` directly. GitHub Actions reviews PRs independently of the UI.
+
+### Hybrid search and indexing
+
+After updating the application, activate the Python environment and run `python ingest.py` from `rag-service` to rebuild the chunks and create the keyword GIN index. Ingestion remains a demo full rebuild: stop queries while it runs. Vector and keyword retrieval share the same chunk rows and collection, so deleted chunks cannot remain in a separate keyword index.
+
+Hybrid search is enabled by default, including for GitHub PR reviews. Optional settings in `rag-service/.env`:
+
+```dotenv
+SEARCH_MODE=hybrid
+VECTOR_TOP_K=20
+KEYWORD_TOP_K=20
+FINAL_TOP_K=5
+```
+
+Use `SEARCH_MODE=vector` or `SEARCH_MODE=keyword` to compare individual branches. Restart FastAPI after changing settings. Keywords use PostgreSQL full-text ranking (not BM25); identifiers are indexed both intact and split into words. Exact code identifiers such as `PaymentService` and quoted phrases such as `"duplicate payment"` take priority over semantic-only results. Remaining results are combined with Reciprocal Rank Fusion and deduplicated by chunk ID. Matching is case insensitive and respects identifier boundaries. Exact matching requires that the text exists within an indexed chunk; it does not guarantee the generated answer is correct.
+
+Both `/ask` and `/review` preserve their existing response formats and source citations. If a search branch fails, the other branch can supply results and the server logs the failure; if retrieval fails without any usable evidence, an error is raised. PR retrieval considers changed lines throughout the supplied diff. Existing API and GitHub diff limits still apply.
+
+Run retrieval checks from the repository root with `python -m unittest discover -s rag-service -p 'test_*.py'` using the installed environment.
 
 ## Local setup (Windows PowerShell)
 

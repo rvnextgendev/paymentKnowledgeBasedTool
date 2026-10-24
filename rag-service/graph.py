@@ -4,7 +4,7 @@ from typing import TypedDict, Literal
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from llm_provider import get_llm
-from common import vector_store
+from retrieval import retrieve
 
 class State(TypedDict, total=False):
     kind: Literal['chat','pr']
@@ -18,13 +18,19 @@ def route(state: State) -> Literal['retrieve_chat','retrieve_pr']:
     return 'retrieve_pr' if state.get('kind')=='pr' else 'retrieve_chat'
 
 def search(query):
-    docs=vector_store().similarity_search(query,k=5)
+    docs=retrieve(query)
     sources=[f"{d.metadata.get('source','unknown')} char {d.metadata.get('start_index','?')}" for d in docs]
     context='\n\n'.join(f'SOURCE {src}\n{doc.page_content}' for src,doc in zip(sources,docs))
     return {'sources':sources,'context':context}
 
 def retrieve_chat(state:State): return search(state.get('question',''))
-def retrieve_pr(state:State): return search('Payment validation business rules and code change '+state.get('diff','')[:2500])
+def retrieve_pr(state:State):
+    # Include changes throughout the diff, rather than only its first 2500 chars.
+    lines = [line for line in state.get('diff', '').splitlines()
+             if line.startswith(('FILE ', 'diff --git ', '+', '-'))
+             and not line.startswith(('+++', '---'))]
+    query = '\n'.join(lines) or state.get('diff', '')
+    return search('Payment validation business rules and code change ' + query)
 
 def complete(state:State, is_review:bool):
     if not state.get('context'):
