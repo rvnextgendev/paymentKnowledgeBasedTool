@@ -25,6 +25,53 @@ Both `/ask` and `/review` preserve their existing response formats and source ci
 
 Run retrieval checks from the repository root with `python -m unittest discover -s rag-service -p 'test_*.py'` using the installed environment.
 
+### Test hybrid search from the UI
+
+Complete the local setup below and configure a working Groq or Ollama model first. From the repository root, start PostgreSQL with `docker compose up -d`. Set `SEARCH_MODE=hybrid` in `rag-service/.env`, then prepare the index and start the API:
+
+```powershell
+cd rag-service
+.\.venv\Scripts\Activate.ps1
+python ingest.py
+uvicorn app:app --reload --port 8000
+```
+
+Wait for ingestion to report `Indexed 3 chunks for vector and keyword search` for the current sample inputs; the count can change when you edit the indexed files. In a second terminal, from the repository root:
+
+```powershell
+cd rag-service
+.\.venv\Scripts\Activate.ps1
+streamlit run streamlit_app.py
+```
+
+Open http://localhost:8501 and confirm the sidebar shows **API reachable**. This confirms connectivity; the following requests also exercise retrieval and generation.
+
+1. Select **Developer Chat**, enter one of the questions below, and click **Ask AI**.
+2. Expand **Retrieved sources** after each answer. Check the file paths and `char` offsets as well as the answer's citations. Paths may use Windows backslashes.
+
+| Test | Question to paste | What to check |
+| --- | --- | --- |
+| Exact code identifier | `Explain PaymentRequest` | `sample-payment-api/Program.cs` should be the first retrieved source. The answer should describe its `Amount` and `Currency` fields. |
+| Exact quoted phrase | `Explain "Only USD supported in demo"` | `sample-payment-api/Program.cs` should be first because it contains that literal message. |
+| Semantic wording | `Can a customer submit a payment with no value?` | The answer should explain that zero amounts are rejected, citing the code or `knowledge/payment-rules.md`. |
+| Code and business rules | `What approval and tests are needed to allow zero-value payments?` | Look for supporting evidence from `knowledge/payment-rules.md` or `knowledge/change-history.md` and an explanation of business approval and testing. |
+
+3. Select **Code Review**, paste this diff, and click **Analyze change**:
+
+```diff
+--- a/sample-payment-api/Program.cs
++++ b/sample-payment-api/Program.cs
+@@
+-    if (request.Amount <= 0) return Results.BadRequest("Amount must be greater than zero");
++    if (request.Amount < 0) return Results.BadRequest("Amount must be greater than zero");
+```
+
+The review should identify that zero-value payments become allowed, discuss the conflict with the indexed rules, and recommend tests. Expand **Retrieved sources** to inspect its evidence. Generated wording can vary; verify the cited evidence rather than expecting identical prose. The assistant should not claim that it executed tests.
+
+4. To compare retrieval modes, change `SEARCH_MODE` to `vector`, `keyword`, or `hybrid` in `.env`, restart FastAPI, and repeat the same questions. No re-indexing is needed when only changing the mode. With only three sample chunks and a default final limit of five, all sources may appear in every mode; compare their order. The UI does not display branch scores or active search mode. Check the API terminal for branch-failure warnings: a successful response can use fallback results when one branch is unavailable.
+
+The **Knowledge Base** tab displays ingestion instructions; it does not run indexing. After changing source code or knowledge files, stop API queries, rerun `python ingest.py`, and repeat the checks. If the UI returns an error, inspect the FastAPI terminal: database/retrieval errors and model-provider errors require different fixes.
+
 ## Local setup (Windows PowerShell)
 
 Install Git, Docker Desktop and Python 3.11 or 3.12. Start Docker Desktop. .NET 8 is optional unless you want to run the sample payment API.
